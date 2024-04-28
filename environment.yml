@@ -1,0 +1,6 @@
+name: sentiment_analysis
+dependencies:
+  - python=3.8
+  - fastapi
+  - uvicorn
+  - pip
