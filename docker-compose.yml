@@ -1,5 +1,19 @@
+version: '3.8'
 services:
   web:
     build: .
     ports:
       - "80:80"
+    depends_on:
+      - db
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: sentiment_analysis
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
