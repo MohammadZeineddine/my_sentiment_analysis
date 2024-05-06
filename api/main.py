@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 from pydantic import BaseModel
 from transformers import pipeline
 from sqlalchemy.orm import Session
