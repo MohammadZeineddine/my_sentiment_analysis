@@ -6,6 +6,8 @@ services:
       - "80:80"
     depends_on:
       - db
+    volumes:
+      - .:/app
   db:
     image: postgres
     environment:
@@ -17,3 +19,5 @@ services:
 
 volumes:
   postgres_data:
+
+
