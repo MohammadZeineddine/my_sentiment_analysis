@@ -1,3 +1,4 @@
+import re
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -47,28 +48,32 @@ def get_db():
 
 @app.post("/analyze")
 async def analyze_sentiment(request: Request, text: str = Form(...), db: Session = Depends(get_db)):
+    # Validation: Non-empty and length check
+    if not text or len(text) > 500 or len(text) < 10:
+        raise HTTPException(
+            status_code=400, detail="Text must be between 10 and 500 characters.")
+
+    # Validation: Character check (optional, customize regex as needed)
+    if not re.match("^[a-zA-Z0-9 .,!?']+$", text):
+        raise HTTPException(
+            status_code=400, detail="Text contains invalid characters.")
+
     if sentiment_pipeline is None:
         raise HTTPException(status_code=503, detail="Model is not loaded yet")
+
     try:
         results = sentiment_pipeline(text)
         sentiment_label = results[0]['label']
         sentiment_score = results[0]['score']
 
-        # Create and save a new review record
         review = Review(text=text, sentiment=sentiment_label,
                         created_at=datetime.utcnow())
         db.add(review)
         db.commit()
 
-        # Prepare the data for the template
-        template_data = {
-            "sentiment": sentiment_label,
-            # Formatting confidence as a percentage
-            "confidence": f"{sentiment_score * 100:.2f}"
-        }
-
-        # Render the results using the HTML template
-        return templates.TemplateResponse("result.html", {"request": request, "result": template_data})
+        template_data = {"sentiment": sentiment_label,
+                         "confidence": f"{sentiment_score:.2f}"}
+        return templates.TemplateResponse("result.html", {"request": request, "results": template_data})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
