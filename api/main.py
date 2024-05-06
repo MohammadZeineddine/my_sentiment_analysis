@@ -1,13 +1,18 @@
 import re
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
 from pydantic import BaseModel
 from transformers import pipeline
 from sqlalchemy.orm import Session
 from .models import Review, Base, engine, SessionLocal
 from datetime import datetime
 
-app = FastAPI(title="Sentiment Analysis API")
+limiter = Limiter(key_func=get_remote_address)
+app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 templates = Jinja2Templates(directory="templates")
 
@@ -47,6 +52,7 @@ def get_db():
 
 
 @app.post("/analyze")
+@limiter.limit("5/minute")
 async def analyze_sentiment(request: Request, text: str = Form(...), db: Session = Depends(get_db)):
     # Validation: Non-empty and length check
     if not text or len(text) > 500 or len(text) < 10:
@@ -72,8 +78,8 @@ async def analyze_sentiment(request: Request, text: str = Form(...), db: Session
         db.commit()
 
         template_data = {"sentiment": sentiment_label,
-                         "confidence": f"{sentiment_score:.2f}"}
-        return templates.TemplateResponse("result.html", {"request": request, "results": template_data})
+                         "confidence": f"{sentiment_score*100:.2f}"}
+        return templates.TemplateResponse("result.html", {"request": request, "result": template_data})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
