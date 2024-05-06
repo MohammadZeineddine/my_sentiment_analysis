@@ -1,11 +1,14 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from transformers import pipeline
 from sqlalchemy.orm import Session
-from models import Review, Base, engine, SessionLocal
-import threading
+from .models import Review, Base, engine, SessionLocal
+from datetime import datetime
 
 app = FastAPI(title="Sentiment Analysis API")
+
+templates = Jinja2Templates(directory="templates")
 
 
 def load_model():
@@ -25,6 +28,11 @@ async def startup_event():
     Base.metadata.create_all(bind=engine)
 
 
+@app.get("/")
+async def home(request: Request):
+    return templates.TemplateResponse("home.html", {"request": request})
+
+
 class TextData(BaseModel):
     text: str
 
@@ -38,16 +46,39 @@ def get_db():
 
 
 @app.post("/analyze")
-async def analyze_sentiment(data: TextData, db: Session = Depends(get_db)):
+async def analyze_sentiment(request: Request, text: str = Form(...), db: Session = Depends(get_db)):
     if sentiment_pipeline is None:
         raise HTTPException(status_code=503, detail="Model is not loaded yet")
     try:
-        results = sentiment_pipeline(data.text)
-        sentiment_result = results[0]['label']
-        review = Review(text=data.text, sentiment=sentiment_result)
+        results = sentiment_pipeline(text)
+        sentiment_label = results[0]['label']
+        sentiment_score = results[0]['score']
+
+        # Create and save a new review record
+        review = Review(text=text, sentiment=sentiment_label,
+                        created_at=datetime.utcnow())
         db.add(review)
         db.commit()
-        return {"results": results}
+
+        # Prepare the data for the template
+        template_data = {
+            "sentiment": sentiment_label,
+            # Formatting confidence as a percentage
+            "confidence": f"{sentiment_score * 100:.2f}"
+        }
+
+        # Render the results using the HTML template
+        return templates.TemplateResponse("result.html", {"request": request, "result": template_data})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# add a rout to get all the reviews
+@app.get("/reviews")
+async def get_reviews(request: Request, db: Session = Depends(get_db)):
+    try:
+        reviews = db.query(Review).all()
+        return templates.TemplateResponse("reviews.html", {"request": request, "reviews": reviews})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
