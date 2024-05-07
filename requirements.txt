@@ -8,3 +8,4 @@ alembic
 python-multipart
 slowapi
 limits
+langdetect
