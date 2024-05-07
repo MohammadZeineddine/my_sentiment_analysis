@@ -1,4 +1,5 @@
 import re
+from langdetect import detect, LangDetectException
 from fastapi import FastAPI, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -66,6 +67,11 @@ async def analyze_sentiment(request: Request, text: str = Form(...), db: Session
         raise HTTPException(
             status_code=400, detail="Text contains invalid characters.")
 
+    # Detect the language of the input text
+    language = detect(text)
+    if language not in ['en']:
+        return {"error": "Unsupported language for analysis"}
+
     if sentiment_pipeline is None:
         raise HTTPException(status_code=503, detail="Model is not loaded yet")
 
@@ -82,6 +88,8 @@ async def analyze_sentiment(request: Request, text: str = Form(...), db: Session
         template_data = {"sentiment": sentiment_label,
                          "confidence": f"{sentiment_score*100:.2f}"}
         return templates.TemplateResponse("result.html", {"request": request, "result": template_data})
+    except LangDetectException:
+        return {"error": "Language detection failed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
