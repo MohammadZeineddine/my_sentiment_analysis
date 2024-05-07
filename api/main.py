@@ -9,8 +9,10 @@ from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 from pydantic import BaseModel
 from transformers import pipeline
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case, cast, Date
 from .models import Review, Base, engine, SessionLocal
 from datetime import datetime
+import logging
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -102,6 +104,37 @@ async def get_reviews(request: Request, db: Session = Depends(get_db)):
         return templates.TemplateResponse("reviews.html", {"request": request, "reviews": reviews})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+logger = logging.getLogger(__name__)
+
+
+def get_sentiment_over_time(db: Session):
+    try:
+        result = db.query(
+            func.date(Review.created_at).label('review_date'),
+            func.sum(case((Review.sentiment == 'POSITIVE', 1), else_=0)).label(
+                'positive_reviews'),
+            func.sum(case((Review.sentiment == 'NEGATIVE', 1), else_=0)).label(
+                'negative_reviews')
+        ).group_by(func.date(Review.created_at)).order_by('review_date').all()
+
+        # Ensure the result is serializable
+        return [{'review_date': str(row.review_date), 'positive_reviews': row.positive_reviews, 'negative_reviews': row.negative_reviews} for row in result]
+    except Exception as e:
+        logger.error(f"Error fetching sentiment data: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred while fetching data: {str(e)}")
+
+
+@app.get("/review_sentiments")
+async def get_review_sentiments(db: Session = Depends(get_db)):
+    sentiments = get_sentiment_over_time(db)
+    return sentiments
+
+
+@app.get("/graphical_reviews")
+async def graphical_reviews(request: Request):
+    return templates.TemplateResponse("graphical_reviews.html", {"request": request})
 
 
 @app.get("/test_db")
