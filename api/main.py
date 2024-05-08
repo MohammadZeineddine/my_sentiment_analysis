@@ -23,6 +23,18 @@ templates = Jinja2Templates(directory="templates")
 
 
 def load_model():
+    """
+    Loads the sentiment analysis model.
+
+    This function initializes the global variable `sentiment_pipeline` with the sentiment analysis model.
+    The model used is "distilbert-base-uncased-finetuned-sst-2-english".
+
+    Raises:
+        Exception: If there is an error while loading the model.
+
+    Returns:
+        None
+    """
     global sentiment_pipeline
     print("Starting model loading.")
     try:
@@ -35,20 +47,48 @@ def load_model():
 
 @app.on_event("startup")
 async def startup_event():
+    """
+    Function to be executed on application startup.
+    It loads the model and creates the necessary database tables.
+    """
     load_model()
     Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
 async def home(request: Request):
+    """
+    This function handles the home route of the API.
+
+    Parameters:
+    - request: The incoming request object.
+
+    Returns:
+    - A TemplateResponse object with the "home.html" template and the request object.
+    """
     return templates.TemplateResponse("home.html", {"request": request})
 
 
 class TextData(BaseModel):
+    """
+    Represents a piece of text data.
+
+    Attributes:
+        text (str): The text data.
+    """
     text: str
 
 
 def get_db():
+    """
+    Returns a database session.
+
+    Yields:
+        db: The database session.
+
+    Finally:
+        Closes the database session.
+    """
     db = SessionLocal()
     try:
         yield db
@@ -59,17 +99,31 @@ def get_db():
 @app.post("/analyze")
 @limiter.limit("5/minute")
 async def analyze_sentiment(request: Request, text: str = Form(...), db: Session = Depends(get_db)):
-    # Validation: Non-empty and length check
+    """
+    Analyzes the sentiment of a given text.
+
+    Args:
+        request (Request): The HTTP request object.
+        text (str): The text to be analyzed.
+        db (Session): The database session.
+
+    Returns:
+        dict: A dictionary containing the sentiment analysis result.
+
+    Raises:
+        HTTPException: If the text is empty, too long, or contains invalid characters.
+        HTTPException: If the language is not supported for analysis.
+        HTTPException: If the sentiment model is not loaded.
+        HTTPException: If an error occurs during sentiment analysis.
+    """
     if not text or len(text) > 500 or len(text) < 10:
         raise HTTPException(
             status_code=400, detail="Text must be between 10 and 500 characters.")
 
-    # Validation: Character check (optional, customize regex as needed)
     if not re.match("^[a-zA-Z0-9 .,!?']+$", text):
         raise HTTPException(
             status_code=400, detail="Text contains invalid characters.")
 
-    # Detect the language of the input text
     language = detect(text)
     if language not in ['en']:
         return {"error": "Unsupported language for analysis"}
@@ -96,9 +150,21 @@ async def analyze_sentiment(request: Request, text: str = Form(...), db: Session
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# add a rout to get all the reviews
 @app.get("/reviews")
 async def get_reviews(request: Request, db: Session = Depends(get_db)):
+    """
+    Retrieve all reviews from the database.
+
+    Parameters:
+    - request: The incoming request object.
+    - db: The database session.
+
+    Returns:
+    - A template response containing the "reviews.html" template and the retrieved reviews.
+
+    Raises:
+    - HTTPException: If there is an error retrieving the reviews from the database.
+    """
     try:
         reviews = db.query(Review).all()
         return templates.TemplateResponse("reviews.html", {"request": request, "reviews": reviews})
@@ -109,6 +175,22 @@ logger = logging.getLogger(__name__)
 
 
 def get_sentiment_over_time(db: Session):
+    """
+    Retrieves the sentiment data over time from the database.
+
+    Args:
+        db (Session): The database session object.
+
+    Returns:
+        list: A list of dictionaries containing the sentiment data over time.
+            Each dictionary contains the following keys:
+            - 'review_date': The date of the review.
+            - 'positive_reviews': The number of positive reviews on that date.
+            - 'negative_reviews': The number of negative reviews on that date.
+
+    Raises:
+        HTTPException: If an error occurs while fetching the data from the database.
+    """
     try:
         result = db.query(
             func.date(Review.created_at).label('review_date'),
@@ -118,7 +200,6 @@ def get_sentiment_over_time(db: Session):
                 'negative_reviews')
         ).group_by(func.date(Review.created_at)).order_by('review_date').all()
 
-        # Ensure the result is serializable
         return [{'review_date': str(row.review_date), 'positive_reviews': row.positive_reviews, 'negative_reviews': row.negative_reviews} for row in result]
     except Exception as e:
         logger.error(f"Error fetching sentiment data: {str(e)}")
@@ -128,12 +209,30 @@ def get_sentiment_over_time(db: Session):
 
 @app.get("/review_sentiments")
 async def get_review_sentiments(db: Session = Depends(get_db)):
+    """
+    Retrieve review sentiments over time.
+
+    Parameters:
+    - db: The database session.
+
+    Returns:
+    - sentiments: A list of review sentiments over time.
+    """
     sentiments = get_sentiment_over_time(db)
     return sentiments
 
 
 @app.get("/graphical_reviews")
 async def graphical_reviews(request: Request):
+    """
+    Endpoint for rendering the graphical_reviews.html template.
+
+    Parameters:
+    - request: The incoming request object.
+
+    Returns:
+    - A TemplateResponse object containing the rendered graphical_reviews.html template.
+    """
     return templates.TemplateResponse("graphical_reviews.html", {"request": request})
 
 

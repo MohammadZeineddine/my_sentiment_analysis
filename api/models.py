@@ -13,6 +13,15 @@ Base = declarative_base()
 
 
 class Review(Base):
+    """
+    Represents a review entity.
+
+    Attributes:
+        id (int): The unique identifier for the review.
+        text (str): The text content of the review.
+        sentiment (str): The sentiment associated with the review.
+        created_at (datetime): The timestamp when the review was created.
+    """
     __tablename__ = 'reviews'
     id = Column(Integer, primary_key=True, index=True)
     text = Column(Text, nullable=False)
